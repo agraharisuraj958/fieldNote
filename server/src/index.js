@@ -45,4 +45,5 @@ app.patch('/api/suppliers/:id',auth('admin'),async(req,res)=>{const p=z.object({
 app.use((err,_req,res,_next)=>{console.error(err);fail(res,500,'Something went wrong. Please try again.');});
 const port=process.env.PORT||4000;
 export {app};
+export default app;
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)app.listen(port,()=>console.log(`Fieldnote API listening on ${port}`));

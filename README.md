@@ -2,6 +2,8 @@
 
 A small, fictional pharmacy operations app built for the Pharmacy Management System assessment. Fieldnote uses React, Express, and PostgreSQL. Its interface uses Manrope with olive, ivory, and white tones.
 
+Created by Suraj Agrahari. The public interface also links back to the [project repository](https://github.com/agraharisuraj958/fieldNote).
+
 ## Quick start
 
 Requirements: Node.js 20+, npm, and PostgreSQL 14+.
@@ -16,6 +18,18 @@ npm run dev
 ```
 
 Open http://127.0.0.1:5173. The API listens on port 4000 and Vite proxies `/api` requests to it.
+
+## Deploy to Vercel
+
+The frontend is built as a Vite static site and `api/[...path].js` exposes the Express API as a Vercel Function. The deployed app needs a hosted PostgreSQL database; it cannot use the PostgreSQL instance on your computer.
+
+1. Import `https://github.com/agraharisuraj958/fieldNote` into your Vercel account and keep the project root at the repository root. Vercel should detect Vite and use `npm run build` with `dist` as the output directory.
+2. Add a PostgreSQL database from Vercel Marketplace (Neon or Supabase), then add `DATABASE_URL` and `JWT_SECRET` to the Vercel project for Production and Preview. Use the provider's pooled connection string with SSL enabled for `DATABASE_URL`; generate a unique secret, for example with `openssl rand -base64 48`.
+3. Install the Vercel CLI and link this checkout to the Vercel project: `npx vercel link`.
+4. Initialize the hosted database once with the Production variables: `npx vercel env run -e production -- npm run db:migrate`, then `npx vercel env run -e production -- npm run db:seed`. Trigger a Production deployment with `npx vercel --prod` (or push a new commit after the environment variables are set).
+5. Open the deployment URL and check `/api/health`. Sign in with the demo administrator credentials shown above. The seed data is fictional and shared by everyone using the public demo, so changes made by visitors affect that shared demo database.
+
+Do not commit `.env.production.local` or any database credentials. For a public demo, use only fictional data and rotate the seeded demo passwords before exposing the app if you do not want visitors to have administrator access.
 
 Demo accounts share the password `FieldnoteDemo26!`:
 
