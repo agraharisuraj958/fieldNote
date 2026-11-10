@@ -1,0 +1,291 @@
+openapi: 3.1.0
+info:
+  title: Fieldnote Pharmacy API
+  version: 1.0.0
+  description: Fictional pharmacy operations API. All protected endpoints require a JWT bearer token.
+servers:
+  - url: http://localhost:4000/api
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message: { type: string }
+    SaleItemInput:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+    SaleInput:
+      type: object
+      required: [items, idempotencyKey]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 100 }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SaleItemInput' }
+    ReturnInput:
+      type: object
+      required: [saleItemId, quantity, reason]
+      properties:
+        saleItemId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+        restock: { type: boolean, default: true }
+    AdjustmentInput:
+      type: object
+      required: [batchId, quantityDelta, reason]
+      properties:
+        batchId: { type: string, format: uuid }
+        quantityDelta: { type: integer, description: Non-zero signed quantity }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    ProductInput:
+      type: object
+      required: [sku, name, category, reorderLevel, taxRate]
+      properties:
+        sku: { type: string, minLength: 3, maxLength: 40 }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        category: { type: string, minLength: 2, maxLength: 80 }
+        unit: { type: string, default: unit }
+        reorderLevel: { type: integer, minimum: 0 }
+        taxRate: { type: number, minimum: 0, maximum: 100 }
+        supplierId: { type: [string, 'null'], format: uuid }
+    ProductPatch:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        category: { type: string, minLength: 2, maxLength: 80 }
+        reorderLevel: { type: integer, minimum: 0 }
+        taxRate: { type: number, minimum: 0, maximum: 100 }
+        supplierId: { type: [string, 'null'], format: uuid }
+        active: { type: boolean }
+    SupplierInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        contact: { type: [string, 'null'], maxLength: 80 }
+        email: { type: [string, 'null'], format: email }
+    PurchaseItemInput:
+      type: object
+      required: [productId, batchNumber, expiryDate, quantity, unitCost, salePrice]
+      properties:
+        productId: { type: string, format: uuid }
+        batchNumber: { type: string, minLength: 2, maxLength: 60 }
+        expiryDate: { type: string, format: date }
+        quantity: { type: integer, minimum: 1 }
+        unitCost: { type: number, minimum: 0 }
+        salePrice: { type: number, minimum: 0 }
+    PurchaseInput:
+      type: object
+      required: [reference, items]
+      properties:
+        supplierId: { type: [string, 'null'], format: uuid }
+        reference: { type: string, minLength: 3, maxLength: 60 }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PurchaseItemInput' }
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Check API and database availability
+      responses:
+        '200': { description: Healthy }
+        '503': { description: Database unavailable }
+  /auth/login:
+    post:
+      security: []
+      summary: Sign in
+      responses:
+        '200': { description: JWT and user profile }
+        '400': { description: Invalid input }
+        '401': { description: Incorrect credentials }
+  /dashboard:
+    get:
+      summary: Dashboard summary and alerts
+      responses:
+        '200': { description: Summary, chart, alerts, recent sales }
+  /products:
+    get:
+      summary: Search product catalogue
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Product page }
+    post:
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201': { description: Product created }
+        '409': { description: Duplicate SKU }
+  /products/{id}:
+    patch:
+      summary: Update product details or set active state
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductPatch' }
+      responses:
+        '200': { description: Product updated }
+        '404': { description: Product not found }
+  /inventory:
+    get:
+      summary: Search batch inventory
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200': { description: Batch stock records }
+  /sales:
+    post:
+      summary: Create an itemized FEFO sale
+      description: Expired batches are excluded. Insufficient unexpired stock rolls back all changes. Reuse idempotencyKey to safely retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaleInput' }
+      responses:
+        '201': { description: Invoice created }
+        '400': { description: Validation failure }
+        '409': { description: Insufficient stock or conflicting retry }
+  /sales:
+    get:
+      summary: List the latest sales for return lookup
+      responses:
+        '200': { description: Recent sale summaries }
+  /sales/{id}:
+    get:
+      summary: Get invoice details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Itemized invoice }
+        '404': { description: Invoice not found }
+  /returns:
+    post:
+      summary: Record a reasoned return
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReturnInput' }
+      responses:
+        '201': { description: Return recorded }
+        '409': { description: Return exceeds unreturned sale quantity }
+  /adjustments:
+    post:
+      summary: Apply a reasoned stock adjustment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdjustmentInput' }
+      responses:
+        '201': { description: Stock adjustment recorded }
+        '409': { description: Adjustment would make stock negative }
+  /reports/stock:
+    get:
+      summary: Stock quantity and value by product
+      responses:
+        '200': { description: Stock report }
+  /reports/expiry:
+    get:
+      summary: Batches expiring within 90 days
+      responses:
+        '200': { description: Expiry report }
+  /movements:
+    get:
+      summary: Recent stock movement audit trail
+      responses:
+        '200': { description: Up to 100 recent stock movements }
+  /suppliers:
+    get:
+      summary: List suppliers
+      responses:
+        '200': { description: Supplier records }
+    post:
+      summary: Add a supplier (administrator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierInput' }
+      responses:
+        '201': { description: Supplier created }
+  /suppliers/{id}:
+    patch:
+      summary: Update supplier details (administrator)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierInput' }
+      responses:
+        '200': { description: Supplier updated }
+  /purchases:
+    get:
+      summary: List recent purchase receipts
+      responses:
+        '200': { description: Purchase history }
+    post:
+      summary: Receive purchase batches from a supplier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PurchaseInput' }
+      responses:
+        '201': { description: Purchase receipt and stock movements }
+  /reports/sales:
+    get:
+      summary: Sales summary for a date range, including daily totals and best sellers
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: Sales report }
