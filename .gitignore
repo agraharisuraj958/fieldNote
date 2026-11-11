@@ -7,3 +7,5 @@ dist
 work/npm-cache
 work/vercel-global
 .vercel
+.env*
+!.env.example
